@@ -4,8 +4,18 @@ from pylab import *
 import casadi as ca
 from casadi.tools import *
 
+############### Seetings ######################
 
 num_datagroup = 300 # number of data groups 
+folder_path = "C:/Users/Xuehua Xiao/Desktop/S1_CartPole/lqr data collecting" # folder to save files
+
+# Time settings
+T = 3  # Total time (seconds)
+dt = 0.01  # Time step (seconds)
+
+
+
+############### LQR ######################
 
 # system parameters
 A = np.array([
@@ -32,7 +42,7 @@ B_casadi = ca.MX(B)
 Q_casadi = ca.MX(Q)
 R_casadi = ca.MX(R)
 
-# Riccati
+# Riccati equation
 P = ca.MX.sym('P', 4, 4)
 Riccati_eq = A_casadi.T @ P + P @ A_casadi - P @ B_casadi @ ca.inv(R_casadi) @ B_casadi.T @ P + Q_casadi
 
@@ -62,13 +72,12 @@ print("\nLQR Gain Matrix (K):")
 print(K)
 
 
-# Define the initial state range
+
+############### Control Loop ######################
+
+# Define the initial states range
 rng_x = np.linspace(-1,1,20)
-# random_x = np.random.choice(rng_x)
-# x_0= f"{random_x:.3f}"
 rng_theta = np.linspace(-np.pi/4,np.pi/4,15)
-# random_theta = np.random.choice(rng_x)
-# theta_0 = f"{random_theta:.3f}"
 
 rng0 = []
 for m in rng_x:
@@ -81,22 +90,18 @@ for turn in range(num_datagroup):
   
   num_turn = turn + 1
   num_turn_float = str(num_turn)
-  folder_path = "C:/Users/Xuehua Xiao/Desktop/S1_CartPole/lqr data collecting"
 
   x_0 = rng0[turn,0]
   x_0= round(x_0, 3)
   theta_0 = rng0[turn,1]
   theta_0= round(theta_0, 3)
-
+ 
+  #save the initial states
   x0 = np.array([x_0 , 0, theta_0, 0])  # Initial states
   txtfile = 'initial states'
   txt_name = txtfile + " " + num_turn_float + '.txt'
   full_txt = os.path.join(folder_path, txt_name)
   np.savetxt(full_txt, x0, delimiter=",",fmt='%1.3f')
-
-  # Time settings
-  T = 3  # Total time (seconds)
-  dt = 0.01  # Time step (seconds)
 
   # Convert K to CasADi MX
   K_casadi = ca.MX(K)
@@ -107,7 +112,7 @@ for turn in range(num_datagroup):
   xdot = A_casadi @ x + B_casadi @ u
   state_update = ca.Function('state_update', [x], [xdot,u])
 
-  # Simulate the system
+  # Simulation
   t = np.arange(0, T, dt)
   x_hist = np.zeros((len(t), len(x0)))
   x_hist[0] = x0
@@ -118,7 +123,7 @@ for turn in range(num_datagroup):
        x_hist[i] = x_hist[i-1] + dt * xdot_val.full().flatten()
        u_hist[i] = u_val.full().item()
 
-  # Save the results to CSV files
+  # Save the control inputs results to CSV files
   cvsfile = 'u_data'
   cvs_name = cvsfile + " " + num_turn_float + '.csv'
   full_cvs = os.path.join(folder_path, cvs_name)

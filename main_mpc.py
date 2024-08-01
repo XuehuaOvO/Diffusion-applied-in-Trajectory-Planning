@@ -3,7 +3,16 @@ import numpy as np
 import os
 import control
 
+############### Seetings ######################
+
 num_datagroup = 300 # number of data groups 
+folder_path = "C:/Users/Xuehua Xiao/Desktop/S1_CartPole/mpc data collecting"
+
+N = 40 # prediction horizon
+
+
+
+############### Dynamics Define ######################
 
 def cart_pole_dynamics(x, u):
     A = np.array([
@@ -52,15 +61,16 @@ def cart_pole_dynamics(x, u):
     )
     return x_next
 
-############# MPC config #####################
+
+
+############# MPC Loop #####################
 
 # mpc parameters
-N = 40
 Q = np.diag([10, 1, 10, 1])
 R = np.array([[1]])
 x_ref = ca.SX.sym('x_ref', 4)
 
-# initialization
+# Define the initial states range
 rng_x = np.linspace(-1,1,20)
 rng_theta = np.linspace(-np.pi/4,np.pi/4,15)
 rng0 = []
@@ -80,13 +90,13 @@ for turn in range(num_datagroup):
 
   num_turn = turn + 1
   num_turn_float = str(num_turn)
-  folder_path = "C:/Users/Xuehua Xiao/Desktop/S1_CartPole/mpc data collecting"
 
   x_0 = rng0[turn,0]
   x_0= round(x_0, 3)
   theta_0 = rng0[turn,1]
   theta_0= round(theta_0, 3)
-
+  
+  #save the initial states
   x0 = np.array([x_0, 0, theta_0, 0])  # Initial states
   txtfile = 'initial states'
   txt_name = txtfile + " " + num_turn_float + '.txt'
@@ -110,17 +120,15 @@ for turn in range(num_datagroup):
   X_sol = sol.value(X_pre)
   U_sol = sol.value(U_pre)
   
-  # Save the results to CSV files
+  # Save the control inputs to CSV files
   cvsfile = 'u_data'
   cvs_name = cvsfile + " " + num_turn_float + '.csv'
   full_cvs = os.path.join(folder_path, cvs_name)
   np.savetxt(full_cvs, U_sol, delimiter=",", fmt='%1.6f')
 
-  # Plot the results
+  # plot some results
   step = np.linspace(0,N,N+1)
   step_u = np.linspace(0,N-1,N)
-
-  # print(step)
 
   import matplotlib.pyplot as plt
   if turn in (0, 61, 134, 227, 295):

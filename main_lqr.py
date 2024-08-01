@@ -89,10 +89,10 @@ for turn in range(num_datagroup):
   theta_0= round(theta_0, 3)
 
   x0 = np.array([x_0 , 0, theta_0, 0])  # Initial states
- #   txtfile = 'initial states'
- #   txt_name = txtfile + " " + num_turn_float + '.txt'
- #   full_txt = os.path.join(folder_path, txt_name)
- #   np.savetxt(full_txt, x0, delimiter=",",fmt='%1.3f')
+  txtfile = 'initial states'
+  txt_name = txtfile + " " + num_turn_float + '.txt'
+  full_txt = os.path.join(folder_path, txt_name)
+  np.savetxt(full_txt, x0, delimiter=",",fmt='%1.3f')
 
   # Time settings
   T = 3  # Total time (seconds)
@@ -119,10 +119,10 @@ for turn in range(num_datagroup):
        u_hist[i] = u_val.full().item()
 
   # Save the results to CSV files
- #   cvsfile = 'u_data'
- #   cvs_name = cvsfile + " " + num_turn_float + '.csv'
- #   full_cvs = os.path.join(folder_path, cvs_name)
- #   np.savetxt(full_cvs, u_hist, delimiter=",", fmt='%1.6f')
+  cvsfile = 'u_data'
+  cvs_name = cvsfile + " " + num_turn_float + '.csv'
+  full_cvs = os.path.join(folder_path, cvs_name)
+  np.savetxt(full_cvs, u_hist, delimiter=",", fmt='%1.6f')
 
   # Plot some results
   import matplotlib.pyplot as plt

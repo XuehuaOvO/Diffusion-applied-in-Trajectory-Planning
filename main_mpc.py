@@ -71,15 +71,15 @@ def cart_pole_dynamics(x, u):
 ############# MPC #####################
 
 # mpc parameters
-Q = np.diag([10, 1, 10, 1]) # 10, 1, 10, 1
+Q = np.diag([10, 1, 10, 1]) 
 R = np.array([[1]])
 P = np.diag([100, 1, 100, 1])
 
 x_ref = ca.SX.sym('x_ref', 4)
 
 # Define the initial states range
-rng_x = np.linspace(-1,1,10) # -1,1,50
-rng_theta = np.linspace(-np.pi/4,np.pi/4,10) # -np.pi/4,np.pi/4,50
+rng_x = np.linspace(-1,1,10) 
+rng_theta = np.linspace(-np.pi/4,np.pi/4,10) 
 rng0 = []
 for m in rng_x:
     for n in rng_theta:
@@ -168,7 +168,11 @@ for turn in range(0,num_datagroup):
        
 
   print(f'x_track -- {x_track.shape}')
-  print(f'u_all_tensor_size -- {u_all_tensor.size()}')
+  print(f'u_all_tensor_size -- {u_all_tensor.size()}') # dimension: [num_initial_state, control_steps, mpc_horizon]
+
+  # Tensor Reshape: [num_initial_state, control_steps, mpc_horizon] -> [num_initial_state * control_steps, mpc_horizon, 1]
+  reshaped_u_tensor = u_all_tensor.view(u_all_tensor.size(0)*u_all_tensor.size(1), u_all_tensor.size(2), 1) 
+  print(f'reshaped_u_tensor -- {reshaped_u_tensor.size()}')
   
 
   # plot some results
@@ -176,7 +180,7 @@ for turn in range(0,num_datagroup):
   step = np.linspace(0,num_i+2,num_i+1)
   step_u = np.linspace(0,num_i+1,num_i)
 
-  if turn in (0, 32, 64): # 0, 1111, 2456
+  if turn in (0, 32, 64): 
      plt.figure(figsize=(10, 8))
 
      plt.subplot(5, 1, 1)
@@ -211,5 +215,5 @@ for turn in range(0,num_datagroup):
      full_plot = os.path.join(folder_path, plot_name)
      plt.savefig(full_plot)
 
-# save u data in PT file
-torch.save(u_all_tensor, os.path.join(folder_path, f'u-collecting_100-64-8.pt'))
+# save u data in PT file for training
+torch.save(reshaped_u_tensor, os.path.join(folder_path, f'u-collecting_6400-8-1.pt'))

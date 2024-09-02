@@ -1,19 +1,24 @@
 import casadi as ca
 import numpy as np
-import os
 import control
+import torch
+import os
+import matplotlib.pyplot as plt
 
 ############### Seetings ######################
 
-num_datagroup = 300 # number of data groups 
+# data saving folder
 folder_path = "C:/Users/Xuehua Xiao/Desktop/S1_CartPole/mpc data collecting"
 
-N = 40 # prediction horizon
+# simulation time
+T = 6.5  # Total time (seconds) 6.5
+dt = 0.1  # Time step (seconds)
+t = np.arange(0, T, dt) # time intervals 65
+print(t.shape)
 
-
+N = 8 # prediction horizon
 
 ############### Dynamics Define ######################
-
 def cart_pole_dynamics(x, u):
     A = np.array([
     [0, 1, 0, 0],
@@ -63,30 +68,37 @@ def cart_pole_dynamics(x, u):
 
 
 
-############# MPC Loop #####################
+############# MPC #####################
 
 # mpc parameters
-Q = np.diag([10, 1, 10, 1])
+Q = np.diag([10, 1, 10, 1]) # 10, 1, 10, 1
 R = np.array([[1]])
+P = np.diag([100, 1, 100, 1])
+
 x_ref = ca.SX.sym('x_ref', 4)
 
 # Define the initial states range
-rng_x = np.linspace(-1,1,20)
-rng_theta = np.linspace(-np.pi/4,np.pi/4,15)
+rng_x = np.linspace(-1,1,10) # -1,1,50
+rng_theta = np.linspace(-np.pi/4,np.pi/4,10) # -np.pi/4,np.pi/4,50
 rng0 = []
 for m in rng_x:
     for n in rng_theta:
         rng0.append([m,n])
 rng0 = np.array(rng0)
+num_datagroup = len(rng0)
+print(rng0.shape)
 
-# data collecting loop
-for turn in range(num_datagroup):
-  # casadi_Opti
-  optimizer = ca.Opti()
-  
-  # x and u mpc prediction along N
-  X_pre = optimizer.variable(4, N + 1) 
-  U_pre = optimizer.variable(1, N) 
+# ##### data collecting loop #####
+
+# data set for each turn
+x_track = np.zeros((4, len(t)))
+u_track = np.zeros((1, len(t)-1))
+
+# data (x,u) collecting (saved in PT file)
+x_all_tensor = torch.zeros(num_datagroup,len(t)-1,4)
+u_all_tensor = torch.zeros(num_datagroup,len(t)-1,N) # total 64 control steps (time intervals), for each step mpc N = 8
+
+for turn in range(0,num_datagroup):
 
   num_turn = turn + 1
   num_turn_float = str(num_turn)
@@ -98,66 +110,99 @@ for turn in range(num_datagroup):
   
   #save the initial states
   x0 = np.array([x_0, 0, theta_0, 0])  # Initial states
-  txtfile = 'initial states'
-  txt_name = txtfile + " " + num_turn_float + '.txt'
-  full_txt = os.path.join(folder_path, txt_name)
-  np.savetxt(full_txt, x0, delimiter=",",fmt='%1.3f')
+  print(f'x0-- {x0}')
+  x_track[:,0] = x0
 
-  optimizer.subject_to(X_pre[:, 0] == x0)  # Initial condition
-
-  # cost 
-  cost = 0
-
-  for k in range(N):
-      x_next = cart_pole_dynamics(X_pre[:, k], U_pre[:, k])
-      optimizer.subject_to(X_pre[:, k + 1] == x_next)
-      cost += Q[0,0]*X_pre[0, k]**2 + Q[1,1]*X_pre[1, k]**2 + Q[2,2]*X_pre[2, k]**2 + Q[3,3]*X_pre[3, k]**2 + U_pre[:, k]**2
-
-  optimizer.minimize(cost)
-  optimizer.solver('ipopt')
-  sol = optimizer.solve()
-
-  X_sol = sol.value(X_pre)
-  U_sol = sol.value(U_pre)
+  for i in range(0, len(t)-1):
+       # casadi_Opti
+       optimizer = ca.Opti()
   
-  # Save the control inputs to CSV files
-  cvsfile = 'u_data'
-  cvs_name = cvsfile + " " + num_turn_float + '.csv'
-  full_cvs = os.path.join(folder_path, cvs_name)
-  np.savetxt(full_cvs, U_sol, delimiter=",", fmt='%1.6f')
+       # x and u mpc prediction along N
+       X_pre = optimizer.variable(4, N + 1) 
+       print(X_pre)
+       U_pre = optimizer.variable(1, N) 
+
+       optimizer.subject_to(X_pre[:, 0] == x0)  # starting state
+
+       # cost 
+       cost = 0
+
+       # initial cost
+       cost += Q[0,0]*X_pre[0, 0]**2 + Q[1,1]*X_pre[1, 0]**2 + Q[2,2]*X_pre[2, 0]**2 + Q[3,3]*X_pre[3, 0]**2
+
+       # state cost
+       for k in range(0,N-1):
+          x_next = cart_pole_dynamics(X_pre[:, k], U_pre[:, k])
+          optimizer.subject_to(X_pre[:, k + 1] == x_next)
+          cost += Q[0,0]*X_pre[0, k+1]**2 + Q[1,1]*X_pre[1, k+1]**2 + Q[2,2]*X_pre[2, k+1]**2 + Q[3,3]*X_pre[3, k+1]**2 + U_pre[:, k]**2
+
+       # terminal cost
+       x_terminal = cart_pole_dynamics(X_pre[:, N-1], U_pre[:, N-1])
+       optimizer.subject_to(X_pre[:, N] == x_terminal)
+       cost += P[0,0]*X_pre[0, N]**2 + P[1,1]*X_pre[1, N]**2 + P[2,2]*X_pre[2, N]**2 + P[3,3]*X_pre[3, N]**2 + U_pre[:, N-1]**2
+
+       optimizer.minimize(cost)
+       optimizer.solver('ipopt')
+       sol = optimizer.solve()
+
+       X_sol = sol.value(X_pre)
+       # print(f'X_sol_shape -- {X_sol.shape}')
+       U_sol = sol.value(U_pre)
+       # print(f'U_sol - {U_sol}')
+       
+       # select the first updated states as new starting state ans save in the x_track
+       x0 = X_sol[:,1]
+       print(f'x0_new-- {x0}')
+       x_track[:,i+1] = x0
+
+       #save the first computed control input
+       u_track[:,i] = U_sol[0]
+       # print(f'u_track- {u_track}')
+
+       # save control inputs in tensor
+       u_reshape = U_sol.reshape(1,N)
+       u_tensor = torch.tensor(u_reshape)
+       # print(f'u_tensor_shape -- {u_tensor}')
+       print(f'turn, i -- {turn, i}')
+       u_all_tensor[turn, i,:] = u_tensor
+       
+
+  print(f'x_track -- {x_track.shape}')
+  print(f'u_all_tensor_size -- {u_all_tensor.size()}')
+  
 
   # plot some results
-  step = np.linspace(0,N,N+1)
-  step_u = np.linspace(0,N-1,N)
+  num_i = len(t)-1
+  step = np.linspace(0,num_i+2,num_i+1)
+  step_u = np.linspace(0,num_i+1,num_i)
 
-  import matplotlib.pyplot as plt
-  if turn in (0, 61, 134, 227, 295):
+  if turn in (0, 32, 64): # 0, 1111, 2456
      plt.figure(figsize=(10, 8))
 
      plt.subplot(5, 1, 1)
-     plt.plot(step, X_sol[0, :])
+     plt.plot(step, x_track[0, :])
      plt.ylabel('Position (m)')
      plt.grid()
 
      plt.subplot(5, 1, 2)
-     plt.plot(step, X_sol[1, :])
+     plt.plot(step, x_track[1, :])
      plt.ylabel('Velocity (m/s)')
      plt.grid()
 
      plt.subplot(5, 1, 3)
-     plt.plot(step, X_sol[2, :])
+     plt.plot(step, x_track[2, :])
      plt.ylabel('Angle (rad)')
      plt.grid()
 
      plt.subplot(5, 1, 4)
-     plt.plot(step, X_sol[3, :])
+     plt.plot(step, x_track[3, :])
      plt.ylabel('Ag Velocity (rad/s)')
      plt.grid()
 
      plt.subplot(5, 1, 5)
-     plt.plot(step_u, U_sol[:])
+     plt.plot(step_u, u_track.reshape(len(t)-1,))
      plt.ylabel('Ctl Input (N)')
-     plt.xlabel('Horizon')
+     plt.xlabel('Control Step')
      plt.grid()
 
      # save plot 
@@ -165,3 +210,6 @@ for turn in range(num_datagroup):
      plot_name = plotfile + " " + num_turn_float + '.png'
      full_plot = os.path.join(folder_path, plot_name)
      plt.savefig(full_plot)
+
+# save u data in PT file
+torch.save(u_all_tensor, os.path.join(folder_path, f'u-collecting_100-64-8.pt'))
